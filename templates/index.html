@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Emotion Detection UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+            background-color: black;
+        }
+
+        #controls {
+            margin: 10px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+
+        #stream {
+            border: 2px solid #333;
+            width: 640px;
+            height: 480px;
+        }
+
+        #info {
+            margin-top: 10px;
+            width: 640px;
+            text-align: left;
+            white-space: pre-wrap;
+            background: #f0f0f0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            height: 200px;
+            overflow: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🎥 Emotion Detection UI</h1>
+
+    <img id="stream" src="" alt="Camera Stream">
+
+    <div id="controls">
+        <button onclick="startCamera()">Start Camera</button>
+        <button onclick="stopCamera()">Stop Camera</button>
+        <button onclick="getLast()">Last Emotion</button>
+        <button onclick="getHistory()">History</button>
+    </div>
+
+    <div id="info">Status info will appear here...</div>
+
+    <script>
+        let streamImg = document.getElementById("stream");
+        let infoDiv = document.getElementById("info");
+
+        function startCamera() {
+            fetch("/camera/start")
+                .then(r => r.json())
+                .then(d => {
+                    infoDiv.innerText = d.status;
+                    streamImg.src = "/stream"; // MJPEG
+                });
+        }
+
+        function stopCamera() {
+            fetch("/camera/stop")
+                .then(r => r.json())
+                .then(d => {
+                    infoDiv.innerText = d.status;
+                    streamImg.src = ""; // matikan stream
+                });
+        }
+
+        function getLast() {
+            fetch("/last")
+                .then(r => r.json())
+                .then(d => {
+                    infoDiv.innerText = JSON.stringify(d, null, 2);
+                });
+        }
+
+        function getHistory() {
+            fetch("/history")
+                .then(r => r.json())
+                .then(d => {
+                    infoDiv.innerText = JSON.stringify(d, null, 2);
+                });
+        }
+    </script>
+
+</body>
+
+</html>
