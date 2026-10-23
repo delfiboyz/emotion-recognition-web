@@ -1,103 +1,173 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 
 <head>
     <meta charset="UTF-8">
-    <title>Emotion Detection UI</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 20px;
-            background-color: black;
-        }
-
-        #controls {
-            margin: 10px;
-        }
-
-        button {
-            margin: 5px;
-            padding: 10px 15px;
-            font-size: 14px;
-        }
-
-        #stream {
-            border: 2px solid #333;
-            width: 640px;
-            height: 480px;
-        }
-
-        #info {
-            margin-top: 10px;
-            width: 640px;
-            text-align: left;
-            white-space: pre-wrap;
-            background: #f0f0f0;
-            padding: 10px;
-            border: 1px solid #ccc;
-            height: 200px;
-            overflow: auto;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0f1a">
+    <meta name="description" content="Deteksi emosi wajah real-time langsung dari browser">
+    <title>Emotion Recognition</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script>
+        try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) { }
+    </script>
 </head>
 
 <body>
+    <header class="topbar">
+        <div class="brand">
+            <img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="32" height="32">
+            <div>
+                <h1>Emotion Recognition</h1>
+                <p class="muted">Deteksi emosi wajah real-time berbasis AI</p>
+            </div>
+        </div>
+        <div class="topbar-actions">
+            <span id="modelStatus" class="pill pill-wait" title="Status model">● Memuat model…</span>
+            <button class="icon-btn" id="settingsBtn" title="Pengaturan (,)" aria-label="Pengaturan">⚙️</button>
+            <button class="icon-btn" id="themeBtn" title="Ganti tema (T)" aria-label="Ganti tema">🌓</button>
+        </div>
+    </header>
 
-    <h1>🎥 Emotion Detection UI</h1>
+    <main class="layout">
+        <!-- ===== Kamera ===== -->
+        <section class="card camera-card">
+            <div class="card-head">
+                <h2>📷 Kamera Langsung</h2>
+                <div class="stats-inline">
+                    <span id="fpsLabel">0 fps</span>
+                    <span id="latencyLabel">— ms</span>
+                    <span id="facesLabel">0 wajah</span>
+                </div>
+            </div>
 
-    <img id="stream" src="" alt="Camera Stream">
+            <div id="stage" class="stage">
+                <video id="video" playsinline muted></video>
+                <img id="uploadPreview" alt="" hidden>
+                <canvas id="overlay"></canvas>
+                <div id="placeholder" class="placeholder">
+                    <div class="big-emoji">🙂</div>
+                    <p>Nyalakan kamera atau <strong>seret &amp; lepas</strong> foto ke sini</p>
+                </div>
+                <div id="dropHint" class="drop-hint" hidden>Lepaskan untuk menganalisis foto</div>
+            </div>
 
-    <div id="controls">
-        <button onclick="startCamera()">Start Camera</button>
-        <button onclick="stopCamera()">Stop Camera</button>
-        <button onclick="getLast()">Last Emotion</button>
-        <button onclick="getHistory()">History</button>
-    </div>
+            <div class="controls">
+                <button id="startBtn" class="btn btn-primary">▶ Mulai Kamera</button>
+                <button id="stopBtn" class="btn" disabled>■ Stop</button>
+                <select id="cameraSelect" class="select" aria-label="Pilih kamera"></select>
+                <button id="snapBtn" class="btn" disabled title="Snapshot (S)">📸 Snapshot</button>
+                <label class="btn">
+                    🖼️ Unggah Foto
+                    <input id="fileInput" type="file" accept="image/*" hidden>
+                </label>
+                <button id="fullscreenBtn" class="btn" title="Layar penuh (F)">⛶</button>
+            </div>
+        </section>
 
-    <div id="info">Status info will appear here...</div>
+        <!-- ===== Emosi saat ini ===== -->
+        <section class="card mood-card">
+            <div class="card-head">
+                <h2>🧠 Emosi Saat Ini</h2>
+                <span id="moodTime" class="muted small"></span>
+            </div>
+            <div class="mood-hero">
+                <div id="moodEmoji" class="mood-emoji">😐</div>
+                <div>
+                    <div id="moodLabel" class="mood-label">Menunggu…</div>
+                    <div id="moodConfidence" class="muted">Belum ada wajah terdeteksi</div>
+                    <div id="moodExtra" class="mood-extra"></div>
+                </div>
+            </div>
+            <ul id="emotionBars" class="bars"></ul>
+            <div class="vibe">
+                <span class="muted small">Skor suasana hati</span>
+                <div class="vibe-track"><div id="vibeMarker" class="vibe-marker"></div></div>
+                <div class="vibe-scale"><span>Negatif</span><span>Netral</span><span>Positif</span></div>
+            </div>
+        </section>
 
-    <script>
-        let streamImg = document.getElementById("stream");
-        let infoDiv = document.getElementById("info");
+        <!-- ===== Grafik ===== -->
+        <section class="card chart-card">
+            <div class="card-head">
+                <h2>📈 Timeline Emosi</h2>
+                <button id="resetSessionBtn" class="btn btn-sm">Reset sesi</button>
+            </div>
+            <div class="chart-wrap"><canvas id="timelineChart"></canvas></div>
+        </section>
 
-        function startCamera() {
-            fetch("/camera/start")
-                .then(r => r.json())
-                .then(d => {
-                    infoDiv.innerText = d.status;
-                    streamImg.src = "/stream"; // MJPEG
-                });
-        }
+        <section class="card chart-card">
+            <div class="card-head">
+                <h2>🍩 Distribusi Sesi</h2>
+                <span id="sessionCount" class="muted small">0 sampel</span>
+            </div>
+            <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+        </section>
 
-        function stopCamera() {
-            fetch("/camera/stop")
-                .then(r => r.json())
-                .then(d => {
-                    infoDiv.innerText = d.status;
-                    streamImg.src = ""; // matikan stream
-                });
-        }
+        <!-- ===== Riwayat ===== -->
+        <section class="card history-card">
+            <div class="card-head">
+                <h2>🗂️ Riwayat Tersimpan</h2>
+                <div class="controls compact">
+                    <select id="historyFilter" class="select" aria-label="Filter emosi">
+                        <option value="">Semua emosi</option>
+                    </select>
+                    <button id="refreshHistoryBtn" class="btn btn-sm">⟳ Muat ulang</button>
+                    <a id="exportBtn" class="btn btn-sm" href="/api/history/export">⬇ Ekspor CSV</a>
+                    <button id="clearHistoryBtn" class="btn btn-sm btn-danger">🗑 Hapus</button>
+                </div>
+            </div>
+            <div id="historySummary" class="summary"></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Waktu</th><th>Sumber</th><th>Wajah</th><th>Emosi</th><th>Keyakinan</th><th>Usia</th><th>Gender</th></tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 
-        function getLast() {
-            fetch("/last")
-                .then(r => r.json())
-                .then(d => {
-                    infoDiv.innerText = JSON.stringify(d, null, 2);
-                });
-        }
+    <!-- ===== Pengaturan ===== -->
+    <dialog id="settingsDialog" class="dialog">
+        <form method="dialog">
+            <h2>⚙️ Pengaturan</h2>
+            <label>Interval analisis <output id="intervalOut"></output>
+                <input type="range" id="setInterval" min="150" max="2000" step="50">
+            </label>
+            <label>Penghalusan (smoothing) <output id="smoothOut"></output>
+                <input type="range" id="setSmoothing" min="0" max="0.9" step="0.05">
+            </label>
+            <label>Detektor wajah
+                <select id="setDetector" class="select"></select>
+            </label>
+            <label>Simpan ke riwayat setiap
+                <select id="setSaveEvery" class="select">
+                    <option value="0">Jangan simpan</option>
+                    <option value="1000">1 detik</option>
+                    <option value="5000">5 detik</option>
+                    <option value="15000">15 detik</option>
+                    <option value="60000">1 menit</option>
+                </select>
+            </label>
+            <label class="check"><input type="checkbox" id="setAgeGender"> Perkirakan usia &amp; gender (lebih lambat)</label>
+            <label class="check"><input type="checkbox" id="setMirror"> Mode cermin</label>
+            <label class="check"><input type="checkbox" id="setVoice"> Umumkan perubahan emosi dengan suara</label>
+            <label class="check"><input type="checkbox" id="setEmojiOverlay"> Tampilkan emoji di atas wajah</label>
+            <p class="muted small">Pintasan: <kbd>Spasi</kbd> mulai/stop · <kbd>S</kbd> snapshot · <kbd>F</kbd> layar penuh · <kbd>T</kbd> tema · <kbd>,</kbd> pengaturan</p>
+            <div class="dialog-actions"><button class="btn btn-primary" value="close">Selesai</button></div>
+        </form>
+    </dialog>
 
-        function getHistory() {
-            fetch("/history")
-                .then(r => r.json())
-                .then(d => {
-                    infoDiv.innerText = JSON.stringify(d, null, 2);
-                });
-        }
-    </script>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+    <script src="{{ url_for('static', filename='vendor/chart.umd.js') }}" defer></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 
 </html>
