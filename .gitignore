@@ -9,3 +9,4 @@ venv/
 data/
 scans/
 scanned_faces/
+_site/
