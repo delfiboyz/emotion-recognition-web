@@ -198,39 +198,44 @@ function drawOverlay() {
     ctx.clearRect(0, 0, W, H);
     if (!state.frameW) return;
     const s = W / state.frameW;
+    // Piksel kanvas per piksel layar (object-fit: contain), agar label & garis
+    // tetap berukuran sama di layar berapa pun resolusi gambarnya.
+    const shown = Math.min(el.overlay.clientWidth / W, el.overlay.clientHeight / H);
+    const px = shown > 0 ? 1 / shown : 1;
     state.smoothed.forEach((f, i) => {
         let { x, y, w, h } = f.region;
         x *= s; y *= s; w *= s; h *= s;
         if (settings.mirror && state.running) x = W - x - w;
         const c = color(f.dominant);
-        const lw = Math.max(2, W / 320);
-        ctx.lineWidth = lw;
+        ctx.lineWidth = 2.5 * px;
         ctx.strokeStyle = c;
         ctx.shadowColor = c;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 12 * px;
         roundRect(x, y, w, h, Math.min(w, h) * 0.12);
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        const label = `${i + 1}. ${LABELS[f.dominant]} ${f.scores[f.dominant].toFixed(0)}%`;
-        const fs = Math.max(13, W / 45);
-        ctx.font = `600 ${fs}px Inter, sans-serif`;
-        const tw = ctx.measureText(label).width + fs;
-        const ly = y > fs * 1.8 ? y - fs * 1.7 : y + h + 4;
-        ctx.fillStyle = c;
-        roundRect(x, ly, tw, fs * 1.5, fs * 0.4);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, x + fs / 2, ly + fs * 0.76);
-
+        // Emoji dulu, label di atasnya agar teks tidak tertutup.
         if (settings.emojiOverlay) {
-            const es = Math.max(24, w * 0.35);
+            const es = Math.max(24 * px, w * 0.35);
             const bob = Math.sin(performance.now() / 300 + i) * es * 0.08;
             ctx.font = `${es}px serif`;
             ctx.textBaseline = "alphabetic";
             ctx.fillText(EMOJI[f.dominant], x + w - es * 0.55, y + es * 0.35 + bob);
         }
+
+        const label = `${i + 1}. ${LABELS[f.dominant]} ${f.scores[f.dominant].toFixed(0)}%`;
+        const fs = 14 * px;
+        ctx.font = `600 ${fs}px Inter, sans-serif`;
+        const tw = ctx.measureText(label).width + fs;
+        const lx = Math.max(0, Math.min(x, W - tw));
+        const ly = y > fs * 1.8 ? y - fs * 1.7 : Math.min(y + h + 4 * px, H - fs * 1.5);
+        ctx.fillStyle = c;
+        roundRect(lx, ly, tw, fs * 1.5, fs * 0.4);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, lx + fs / 2, ly + fs * 0.76);
     });
 }
 
@@ -631,6 +636,8 @@ function bindEvents() {
         else if (state.running) analyzeTick();
     });
     navigator.mediaDevices?.addEventListener?.("devicechange", listCameras);
+    // Foto unggahan hanya digambar sekali; gambar ulang saat ukuran tampilan berubah.
+    window.addEventListener("resize", () => !state.running && drawOverlay());
 }
 
 // ---------- Init ----------
