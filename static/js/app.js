@@ -1,5 +1,8 @@
 // Emotion Recognition Web - front-end
-// Kamera dibuka di browser, frame dikirim ke /api/analyze, hasil digambar di canvas.
+// Kamera dibuka di browser. Frame dianalisis oleh server (POST /api/analyze, DeepFace)
+// atau langsung di browser (face-api) bila server tidak ada, mis. di GitHub Pages.
+
+import * as browserEngine from "./browser-engine.js";
 
 const EMOTIONS = ["happy", "sad", "angry", "surprise", "neutral", "disgust", "fear"];
 const LABELS = {
@@ -12,6 +15,8 @@ const EMOJI = {
 };
 const TIMELINE_POINTS = 60;
 const SEND_WIDTH = 640;
+// Versi statis (GitHub Pages) ditandai saat build; lewati pengecekan server.
+const STATIC_SITE = document.querySelector('meta[name="app-mode"]')?.content === "static";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -30,7 +35,8 @@ const ctx = el.overlay.getContext("2d");
 
 // ---------- Pengaturan (tersimpan di localStorage) ----------
 const DEFAULT_SETTINGS = {
-    interval: 400, smoothing: 0.5, detector: "opencv", saveEvery: 5000,
+    interval: 400, smoothing: 0.5, engine: "server", detector: "opencv",
+    browserDetector: "tinyFaceDetector", saveEvery: 5000,
     ageGender: false, mirror: true, voice: false, emojiOverlay: true,
 };
 const settings = { ...DEFAULT_SETTINGS, ...loadJSON("settings", {}) };
@@ -44,12 +50,14 @@ function saveSettings() {
 
 // ---------- State ----------
 const state = {
-    stream: null, running: false, inFlight: false, timer: null,
+    stream: null, running: false, inFlight: false, timer: null, serverAvailable: false,
     faces: [], frameW: 0, frameH: 0, smoothed: [],
     lastSave: 0, frames: 0, fpsTime: performance.now(),
     session: Object.fromEntries(EMOTIONS.map((e) => [e, 0])), samples: 0,
     lastDominant: null, stableCount: 0, announced: null,
 };
+
+const useBrowser = () => !state.serverAvailable || settings.engine === "browser";
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const color = (emotion) => cssVar(`--${emotion}`) || "#888";
@@ -76,6 +84,7 @@ function buildBars() {
 function renderMood(face) {
     if (!face) {
         el.moodLabel.textContent = "Tidak ada wajah";
+        el.moodLabel.style.color = "";
         el.moodConfidence.textContent = "Arahkan wajah ke kamera";
         el.moodExtra.textContent = "";
         return;
@@ -275,6 +284,16 @@ async function sendForAnalysis(blob, { save, source }) {
     return data;
 }
 
+async function runAnalysis(input, { save, source, file }) {
+    if (useBrowser()) {
+        const data = await browserEngine.analyze(input, { detector: settings.browserDetector, ageGender: settings.ageGender });
+        data.saved = save && data.faces.length ? browserEngine.localHistory.add(data.faces, source) : 0;
+        return data;
+    }
+    const blob = file ?? await new Promise((r) => input.toBlob(r, "image/jpeg", 0.8));
+    return sendForAnalysis(blob, { save, source });
+}
+
 function handleResult(data) {
     state.frameW = data.width;
     state.frameH = data.height;
@@ -312,11 +331,10 @@ async function analyzeTick() {
         captureCanvas.width = Math.round(v.videoWidth * scale);
         captureCanvas.height = Math.round(v.videoHeight * scale);
         captureCanvas.getContext("2d").drawImage(v, 0, 0, captureCanvas.width, captureCanvas.height);
-        const blob = await new Promise((r) => captureCanvas.toBlob(r, "image/jpeg", 0.8));
         const now = Date.now();
         const save = settings.saveEvery > 0 && now - state.lastSave >= settings.saveEvery;
         try {
-            const data = await sendForAnalysis(blob, { save, source: "browser" });
+            const data = await runAnalysis(captureCanvas, { save, source: "browser" });
             if (save && data.saved) state.lastSave = now;
             if (state.running) handleResult(data);
         } catch (err) {
@@ -411,7 +429,7 @@ async function analyzeFile(file) {
     try {
         state.smoothed = [];
         const saved = settings.saveEvery > 0;
-        const data = await sendForAnalysis(file, { save: saved, source: "upload" });
+        const data = await runAnalysis(el.preview, { save: saved, source: "upload", file });
         handleResult(data);
         drawOverlay();
         el.snapBtn.disabled = false;
@@ -450,6 +468,12 @@ function toggleFullscreen() {
 // ---------- Riwayat ----------
 async function loadHistory() {
     const emotion = el.historyFilter.value;
+    $("historyWhere").textContent = useBrowser() ? "Tersimpan di browser ini" : "Tersimpan di server";
+    if (useBrowser()) {
+        renderHistory(browserEngine.localHistory.recent(200, emotion));
+        renderSummary(browserEngine.localHistory.stats());
+        return;
+    }
     try {
         const [rows, stats] = await Promise.all([
             fetch(`/api/history?limit=200${emotion ? `&emotion=${emotion}` : ""}`).then((r) => r.json()),
@@ -520,13 +544,44 @@ function renderSummary(stats) {
 
 async function clearHistory() {
     if (!confirm("Hapus semua riwayat deteksi?")) return;
-    const res = await fetch("/api/history", { method: "DELETE" }).then((r) => r.json());
+    const res = useBrowser()
+        ? { deleted: browserEngine.localHistory.clear() }
+        : await fetch("/api/history", { method: "DELETE" }).then((r) => r.json());
     toast(`${res.deleted} entri dihapus`);
     loadHistory();
 }
 
+function exportHistory(e) {
+    if (!useBrowser()) return; // mode server: link /api/history/export biasa
+    e.preventDefault();
+    const blob = new Blob([browserEngine.localHistory.exportCsv()], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `emotion_history_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 // ---------- Status model ----------
+function setStatus(kind, text, title = "") {
+    el.modelStatus.className = `pill pill-${kind}`;
+    el.modelStatus.textContent = `● ${text}`;
+    el.modelStatus.title = title;
+}
+
+async function warmupBrowser() {
+    setStatus("wait", "Memuat model AI…");
+    try {
+        await browserEngine.warmup(settings.browserDetector);
+        setStatus("ok", "Model siap (browser)", "Analisis berjalan di perangkat ini; gambar tidak dikirim ke mana pun");
+    } catch (err) {
+        console.warn(err);
+        setStatus("err", "Model error", String(err));
+    }
+}
+
 async function pollHealth() {
+    if (useBrowser()) return warmupBrowser();
     try {
         const h = await fetch("/api/health").then((r) => r.json());
         if (h.model_error) {
@@ -559,16 +614,39 @@ async function initSettings() {
             if (key === "mirror") el.stage.classList.toggle("mirror", settings.mirror);
         });
     };
-    try {
-        const cfg = await fetch("/api/config").then((r) => r.json());
-        $("setDetector").replaceChildren(...cfg.detectors.map((d) => new Option(d, d)));
-        if (!loadJSON("settings", {}).detector) settings.detector = cfg.default_detector;
-    } catch {
-        $("setDetector").replaceChildren(new Option("opencv", "opencv"));
+    let serverDetectors = ["opencv"];
+    if (state.serverAvailable) {
+        try {
+            const cfg = await fetch("/api/config").then((r) => r.json());
+            serverDetectors = cfg.detectors;
+            if (!loadJSON("settings", {}).detector) settings.detector = cfg.default_detector;
+        } catch { /* pakai default */ }
     }
+    // Daftar detektor mengikuti mesin yang aktif.
+    const detectorSelect = $("setDetector");
+    const fillDetectors = () => {
+        const browser = useBrowser();
+        detectorSelect.replaceChildren(...(browser ? browserEngine.BROWSER_DETECTORS : serverDetectors).map((d) => new Option(d, d)));
+        detectorSelect.value = browser ? settings.browserDetector : settings.detector;
+    };
+    fillDetectors();
+    detectorSelect.addEventListener("input", () => {
+        settings[useBrowser() ? "browserDetector" : "detector"] = detectorSelect.value;
+        saveSettings();
+    });
+    $("engineField").hidden = !state.serverAvailable;
+    const engineSelect = $("setEngine");
+    engineSelect.value = settings.engine;
+    engineSelect.addEventListener("input", () => {
+        settings.engine = engineSelect.value;
+        saveSettings();
+        state.smoothed = [];
+        fillDetectors();
+        loadHistory();
+        pollHealth();
+    });
     bind("setInterval", "interval", { out: "intervalOut", fmt: (v) => `${v} ms` });
     bind("setSmoothing", "smoothing", { out: "smoothOut", fmt: (v) => v.toFixed(2) });
-    bind("setDetector", "detector");
     bind("setSaveEvery", "saveEvery");
     bind("setAgeGender", "ageGender", { type: "checked" });
     bind("setMirror", "mirror", { type: "checked" });
@@ -604,6 +682,7 @@ function bindEvents() {
     $("refreshHistoryBtn").addEventListener("click", loadHistory);
     $("clearHistoryBtn").addEventListener("click", clearHistory);
     el.historyFilter.addEventListener("change", loadHistory);
+    $("exportBtn").addEventListener("click", exportHistory);
 
     ["dragenter", "dragover"].forEach((t) => el.stage.addEventListener(t, (e) => {
         e.preventDefault();
@@ -641,17 +720,29 @@ function bindEvents() {
 }
 
 // ---------- Init ----------
-function init() {
+async function detectServer() {
+    if (STATIC_SITE) return false;
+    try {
+        const res = await fetch("/api/health");
+        return res.ok && (await res.json()).status === "ok";
+    } catch {
+        return false;
+    }
+}
+
+async function init() {
     buildBars();
     el.historyFilter.append(...EMOTIONS.map((e) => new Option(`${EMOJI[e]} ${LABELS[e]}`, e)));
-    initSettings();
+    // Sebelum await: event "load" bisa terlewat selama pengecekan server.
+    if (window.Chart) initCharts();
+    else window.addEventListener("load", initCharts, { once: true });
+    state.serverAvailable = await detectServer();
+    await initSettings();
     bindEvents();
     listCameras();
     loadHistory();
     pollHealth();
-    if (window.Chart) initCharts();
-    else window.addEventListener("load", initCharts, { once: true });
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { });
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
 }
 
 init();

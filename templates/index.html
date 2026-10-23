@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b0f1a">
     <meta name="description" content="Deteksi emosi wajah real-time langsung dari browser">
+    <meta name="app-mode" content="{{ app_mode | default('server') }}">
     <title>Emotion Recognition</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
@@ -111,7 +112,10 @@
         <!-- ===== Riwayat ===== -->
         <section class="card history-card">
             <div class="card-head">
-                <h2>🗂️ Riwayat Tersimpan</h2>
+                <div>
+                    <h2>🗂️ Riwayat Tersimpan</h2>
+                    <span id="historyWhere" class="muted small"></span>
+                </div>
                 <div class="controls compact">
                     <select id="historyFilter" class="select" aria-label="Filter emosi">
                         <option value="">Semua emosi</option>
@@ -142,6 +146,12 @@
             </label>
             <label>Penghalusan (smoothing) <output id="smoothOut"></output>
                 <input type="range" id="setSmoothing" min="0" max="0.9" step="0.05">
+            </label>
+            <label id="engineField">Mesin AI
+                <select id="setEngine" class="select">
+                    <option value="server">Server (DeepFace, lebih akurat)</option>
+                    <option value="browser">Browser (face-api, lebih cepat &amp; privat)</option>
+                </select>
             </label>
             <label>Detektor wajah
                 <select id="setDetector" class="select"></select>

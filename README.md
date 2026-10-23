@@ -1,11 +1,14 @@
 # emotion-recognition-web
 
-Deteksi emosi wajah **real-time** langsung dari browser, ditenagai DeepFace + Flask.
+Deteksi emosi wajah **real-time** langsung dari browser, ditenagai DeepFace + Flask, atau sepenuhnya di browser dengan face-api (TensorFlow.js).
+
+🌐 **Demo:** https://delfiboyz.github.io/emotion-recognition-web/ (versi GitHub Pages, AI berjalan di perangkat Anda)
 
 ![stack](https://img.shields.io/badge/Python-3.10--3.13-blue) ![flask](https://img.shields.io/badge/Flask-3.1-black) ![tf](https://img.shields.io/badge/TensorFlow-2.21-orange)
 
 ## ✨ Fitur
 
+- **Dua mesin AI**: *Server* (DeepFace, lebih akurat) atau *Browser* (face-api/TensorFlow.js, cepat & privat: gambar tidak dikirim ke mana pun). Tanpa server, aplikasi otomatis memakai mesin browser.
 - **Kamera di browser** (WebRTC `getUserMedia`) – bisa dipakai dari laptop/HP mana pun, bukan hanya kamera server. Pilih kamera, mode cermin, layar penuh.
 - **Multi-wajah** dengan kotak, label, dan emoji animasi di atas setiap wajah.
 - **Skor 7 emosi** (senang, sedih, marah, terkejut, netral, jijik, takut) + *smoothing* agar hasil stabil, plus **skor suasana hati** positif ↔ negatif.
@@ -32,6 +35,21 @@ Buka **http://localhost:5000**. (Alamat lama `/ui` otomatis dialihkan.)
 > Browser hanya mengizinkan kamera di `localhost` atau lewat **HTTPS**. Untuk akses dari HP di jaringan lain, pasang di belakang reverse proxy HTTPS (mis. Caddy/nginx) atau gunakan tunnel seperti `cloudflared`.
 
 Saat pertama dijalankan, DeepFace mengunduh bobot model (± 6 MB untuk model emosi) ke `~/.deepface`.
+
+### GitHub Pages (tanpa server)
+
+Workflow `.github/workflows/pages.yml` membangun versi statis dan men-deploy-nya setiap ada push ke `main`.
+
+1. Buka **Settings → Pages**, pada *Build and deployment → Source* pilih **GitHub Actions** (cukup sekali).
+2. Push ke `main`, atau buka tab **Actions → Deploy GitHub Pages → Run workflow**.
+3. Situs tersedia di `https://<user>.github.io/<repo>/`.
+
+Di versi ini analisis berjalan di browser dengan face-api (detektor `tinyFaceDetector` atau `ssdMobilenetv1`), dan riwayat disimpan di `localStorage` browser. Untuk mencoba secara lokal:
+
+```bash
+python scripts/build_static.py _site
+python -m http.server 8080 --directory _site
+```
 
 ### Docker
 
@@ -114,7 +132,8 @@ emotion_service.py  # Wrapper DeepFace: decode gambar, analisis, normalisasi has
 storage.py          # Riwayat SQLite (statistik, ekspor CSV)
 wsgi.py             # Entry point gunicorn
 templates/          # Halaman web
-static/             # CSS, JS, ikon, manifest PWA, service worker, Chart.js
+static/             # CSS, JS, ikon, manifest PWA, service worker, Chart.js, face-api + model
+scripts/            # build_static.py: versi statis untuk GitHub Pages
 deepface/           # Library DeepFace (versi lokal)
 main.py, analyzer.py  # Aplikasi desktop OpenCV (lama)
 tests/              # Tes pytest
