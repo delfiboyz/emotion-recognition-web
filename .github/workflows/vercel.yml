@@ -1,0 +1,27 @@
+name: Deploy Vercel
+
+# Butuh secret repo: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+# Build dijalankan di Vercel sesuai vercel.json.
+# Tanpa secret tersebut job dilewati (tidak gagal).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.VERCEL_TOKEN != ''
+      - name: Deploy ke Vercel (produksi)
+        if: env.VERCEL_TOKEN != ''
+        run: npx --yes vercel@39.1.1 deploy --prod --yes --token "$VERCEL_TOKEN"
