@@ -51,6 +51,23 @@ python scripts/build_static.py _site
 python -m http.server 8080 --directory _site
 ```
 
+### Vercel (tanpa server)
+
+Repo ini sudah berisi `vercel.json` yang membangun versi statis yang sama seperti GitHub Pages (mesin AI di browser). Server Flask + TensorFlow tidak dijalankan di Vercel karena melebihi batas ukuran fungsi serverless.
+
+**Cara 1 – lewat dashboard (paling mudah):**
+1. Buka https://vercel.com/new, pilih **Import Git Repository** → `emotion-recognition-web`.
+2. Biarkan pengaturan bawaan (semua sudah diatur oleh `vercel.json`), klik **Deploy**.
+3. Setiap push ke `main` otomatis di-deploy ulang.
+
+**Cara 2 – lewat GitHub Actions:** tambahkan secret `VERCEL_TOKEN`, `VERCEL_ORG_ID`, dan `VERCEL_PROJECT_ID` (lihat `.vercel/project.json` setelah `vercel link`), maka workflow `.github/workflows/vercel.yml` men-deploy setiap push ke `main`.
+
+**Cara 3 – CLI:**
+
+```bash
+npx vercel --prod
+```
+
 ### Docker
 
 ```bash

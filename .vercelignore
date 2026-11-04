@@ -1,0 +1,7 @@
+data/
+scans/
+scanned_faces/
+emotion_log.csv
+tests/
+.venv/
+venv/
