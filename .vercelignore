@@ -5,3 +5,12 @@ emotion_log.csv
 tests/
 .venv/
 venv/
+
+# Jangan unggah kode server Python: Vercel akan mendeteksinya sebagai
+# aplikasi Flask dan membundel TensorFlow (>2 GB). Situs ini statis.
+/*.py
+requirements*.txt
+pytest.ini
+Dockerfile
+.dockerignore
+deepface/
